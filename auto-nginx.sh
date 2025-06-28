@@ -23,7 +23,19 @@ if [[ -z "$WEB_ROOT" ]]; then
     error_message "Root directory tidak boleh kosong."
 fi
 
+# Meminta port HTTP
+read -p "Masukkan port HTTP yang akan didengarkan Nginx (biarkan kosong untuk 80): " CUSTOM_HTTP_PORT
+CUSTOM_HTTP_PORT=${CUSTOM_HTTP_PORT:-80} # Default ke 80 jika kosong
+
+# Menentukan apakah akan menyertakan blok HTTPS yang dikomentari
+read -p "Apakah Anda ingin menyertakan blok konfigurasi HTTPS yang dikomentari untuk nanti? (y/n, default: y): " INCLUDE_HTTPS_BLOCK
+INCLUDE_HTTPS_BLOCK=${INCLUDE_HTTPS_BLOCK,,} # Ubah ke lowercase
+if [[ -z "$INCLUDE_HTTPS_BLOCK" ]]; then
+    INCLUDE_HTTPS_BLOCK="y" # Default ke 'y'
+fi
+
 # Memilih jenis backend
+echo "---"
 echo "Pilih jenis backend yang akan digunakan:"
 echo "1) File Statis (HTML, CSS, JS)"
 echo "2) Proxy Pass (untuk Node.js, Python, dll.)"
@@ -78,9 +90,30 @@ CONF_FILE="$NGINX_CONF_DIR/$DOMAIN_NAME.conf"
 echo "Membuat file konfigurasi Nginx: $CONF_FILE"
 cat <<EOF > "$CONF_FILE"
 server {
-    listen 80;
-    listen [::]:80;
+    listen $CUSTOM_HTTP_PORT;
+    listen [::]:$CUSTOM_HTTP_PORT;
 
+EOF
+
+if [[ "$INCLUDE_HTTPS_BLOCK" == "y" ]]; then
+    cat <<EOF >> "$CONF_FILE"
+    # --- Konfigurasi HTTPS (untuk diaktifkan nanti) ---
+    # listen 443 ssl http2;
+    # listen [::]:443 ssl http2;
+    #
+    # ssl_certificate /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem;
+    #
+    # # Untuk redirect HTTP ke HTTPS (opsional)
+    # # if (\$scheme = http) {
+    # #     return 301 https://\$host\$request_uri;
+    # # }
+    # ---------------------------------------------------
+
+EOF
+fi
+
+cat <<EOF >> "$CONF_FILE"
     server_name $DOMAIN_NAME www.$DOMAIN_NAME;
     root $WEB_ROOT; # Root directory selalu ada untuk semua tipe
 
@@ -128,12 +161,6 @@ EOF
 fi
 
 cat <<EOF >> "$CONF_FILE"
-    # Tambahkan konfigurasi SSL/TLS di sini nanti jika diperlukan
-    # listen 443 ssl http2;
-    # listen [::]:443 ssl http2;
-    # ssl_certificate /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem;
-    # ssl_certificate_key /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem;
-
     # Contoh konfigurasi untuk log
     access_log /var/log/nginx/$DOMAIN_NAME-access.log;
     error_log /var/log/nginx/$DOMAIN_NAME-error.log;
@@ -166,7 +193,7 @@ fi
 echo -e "\n---"
 echo "Langkah selanjutnya yang mungkin perlu Anda lakukan:"
 echo "1. Pastikan DNS Anda mengarah ke server ini."
-echo "2. Jika menggunakan SSL (HTTPS), jalankan Certbot atau cara lain untuk mendapatkan sertifikat SSL dan perbarui file konfigurasi Nginx ini."
+echo "2. Jika Anda memilih untuk menyertakan blok HTTPS, Anda perlu mendapatkan sertifikat SSL (misalnya dengan Certbot), kemudian meng-uncomment baris-baris SSL dan mengisinya dengan path sertifikat yang benar di file konfigurasi ini ($CONF_FILE)."
 echo "   Contoh dengan Certbot (setelah Nginx di-reload): sudo certbot --nginx -d $DOMAIN_NAME -d www.$DOMAIN_NAME"
 echo "3. Pastikan PHP-FPM berjalan jika Anda memilih FastCGI."
 echo "4. Letakkan file website Anda di $WEB_ROOT."
